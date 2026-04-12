@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>なっちゃんとコナの3D迷路</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: monospace; user-select: none; }
+
+  /* ══════ スタート画面 ══════ */
+  #overlay {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-end;
+    color: #fff; z-index: 10;
+    overflow: hidden;
+  }
+
+  /* イラスト背景 */
+  #overlay .bg-img {
+    position: absolute; inset: 0;
+    background: url('natchan-kona.png') center center / cover no-repeat;
+    z-index: 0;
+  }
+
+  /* 迷路壁シルエット（左右） */
+  #overlay .maze-left,
+  #overlay .maze-right {
+    position: absolute; top: 0; bottom: 0; width: 130px;
+    z-index: 1; display: flex; flex-direction: column; gap: 0;
+  }
+  #overlay .maze-left  { left: 0; }
+  #overlay .maze-right { right: 0; }
+  .maze-block {
+    flex: 1;
+    background: #1a2744;
+    border: 1px solid #2a4080;
+    min-height: 0;
+  }
+  .maze-block.open { background: transparent; border: none; }
+
+  /* 上部グラデ（タイトル用暗幕） */
+  #overlay .top-shade {
+    position: absolute; top: 0; left: 0; right: 0; height: 38%;
+    background: linear-gradient(to bottom, rgba(5,10,30,0.92) 0%, rgba(5,10,30,0.6) 60%, transparent 100%);
+    z-index: 2;
+  }
+
+  /* 下部グラデ（ボタン用暗幕） */
+  #overlay .bottom-shade {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 42%;
+    background: linear-gradient(to top, rgba(5,10,30,0.96) 0%, rgba(5,10,30,0.7) 55%, transparent 100%);
+    z-index: 2;
+  }
+
+  /* タイトルブロック */
+  #overlay .title-block {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 28px 20px 0;
+    text-align: center; z-index: 3;
+  }
+  #overlay .title-en {
+    font-size: 0.85rem; letter-spacing: 6px;
+    color: #88bbff; text-transform: uppercase;
+    text-shadow: 0 0 12px #4488ff;
+    margin-bottom: 6px;
+  }
+  #overlay .title-jp {
+    font-family: 'Kaisei Decol', 'Hiragino Kaku Gothic Pro', serif;
+    font-size: clamp(1.6rem, 5vw, 2.6rem);
+    color: #fff;
+    text-shadow: 0 0 20px #ff9900, 0 2px 6px rgba(0,0,0,0.9);
+    letter-spacing: 2px; line-height: 1.2;
+  }
+  #overlay .title-jp span { color: #ffdd44; }
+
+  /* キャラ名ラベル */
+  #overlay .char-label {
+    position: absolute; z-index: 3;
+    font-size: 0.78rem; font-weight: bold;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px; padding: 3px 10px;
+    color: #fff; text-shadow: 0 1px 4px #000;
+    pointer-events: none;
+  }
+  #overlay .label-natsu { bottom: 43%; left: 17%; }
+  #overlay .label-kona  { bottom: 43%; right: 16%; }
+
+  /* 操作説明 */
+  #overlay .controls {
+    position: relative; z-index: 3;
+    text-align: center;
+    margin-bottom: 14px;
+    font-size: 0.82rem; color: rgba(200,220,255,0.8);
+    line-height: 1.7;
+  }
+  #overlay .controls b { color: #aaccff; }
+
+  /* スタートボタン */
+  #overlay .start-wrap {
+    position: relative; z-index: 3;
+    margin-bottom: 36px; text-align: center;
+  }
+  #overlay button#start-btn {
+    padding: 16px 56px;
+    font-size: 1.35rem; font-weight: bold; cursor: pointer;
+    background: linear-gradient(135deg, #ff6600, #ffaa00);
+    border: 3px solid #ffdd88;
+    border-radius: 50px;
+    color: #1a0a00;
+    letter-spacing: 4px;
+    box-shadow: 0 0 30px rgba(255,140,0,0.7), 0 4px 16px rgba(0,0,0,0.5);
+    animation: pulse-btn 1.6s ease-in-out infinite;
+    transition: transform .1s;
+  }
+  #overlay button#start-btn:hover { transform: scale(1.06); }
+  @keyframes pulse-btn {
+    0%,100% { box-shadow: 0 0 30px rgba(255,140,0,0.7), 0 4px 16px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 0 55px rgba(255,180,0,0.95), 0 4px 20px rgba(0,0,0,0.5); }
+  }
+
+  /* スピードライン（疾走感） */
+  #overlay .speed-lines {
+    position: absolute; inset: 0; z-index: 1;
+    background: repeating-linear-gradient(
+      100deg,
+      transparent 0px, transparent 18px,
+      rgba(255,200,80,0.04) 18px, rgba(255,200,80,0.04) 20px
+    );
+    animation: speed-anim 0.4s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes speed-anim {
+    from { background-position: 0 0; }
+    to   { background-position: 40px 0; }
+  }
+
+  #crosshair {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    color: rgba(255,255,255,0.6); font-size: 20px;
+    pointer-events: none;
+  }
+  #minimap {
+    position: fixed; top: 14px; right: 14px;
+    opacity: 0.85; pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+
+  /* 移動ボタン（右下・WASD配置） */
+  #dpad {
+    position: fixed; right: 20px; bottom: 20px;
+    display: grid;
+    grid-template-areas: ". up ." "left down right";
+    gap: 5px; z-index: 5;
+  }
+  .dpad-btn {
+    width: 62px; height: 62px;
+    background: rgba(255,255,255,0.18);
+    border: 2px solid rgba(255,255,255,0.4);
+    border-radius: 10px; color: #fff; font-size: 22px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; touch-action: none;
+    transition: background .08s;
+  }
+  .dpad-btn:active, .dpad-btn.pressed { background: rgba(100,180,255,0.5); border-color: #88ccff; }
+  .dpad-btn[data-dir="up"]    { grid-area: up; }
+  .dpad-btn[data-dir="left"]  { grid-area: left; }
+  .dpad-btn[data-dir="right"] { grid-area: right; }
+  .dpad-btn[data-dir="down"]  { grid-area: down; }
+
+  #look-area { position: fixed; inset: 0; cursor: crosshair; z-index: 3; }
+
+  #hud {
+    position: fixed; bottom: 12px; left: 20px;
+    color: rgba(255,255,255,0.45); font-size: 11px;
+    pointer-events: none;
+  }
+  #kona-status {
+    position: fixed; top: 14px; left: 14px;
+    color: #ffcc88; font-size: 13px; font-weight: bold;
+    pointer-events: none; text-shadow: 0 0 8px rgba(0,0,0,0.8);
+  }
+  /* ミュートボタン */
+  #mute-btn {
+    position: fixed; bottom: 20px; left: 20px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    border: 2px solid rgba(255,255,255,0.35);
+    color: #fff; font-size: 20px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 5; transition: background .1s;
+  }
+  #mute-btn:hover { background: rgba(255,255,255,0.3); }
+  /* コナのセリフ吹き出し */
+  #bark-bubble {
+    position: fixed; top: 50px; left: 14px;
+    background: #fff; color: #333;
+    font-size: 20px; font-weight: bold;
+    padding: 8px 16px; border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    pointer-events: none; z-index: 6;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  #bark-bubble::before {
+    content: ''; position: absolute;
+    bottom: -8px; left: 16px;
+    border: 5px solid transparent;
+    border-top-color: #fff;
+  }
+
+  /* ── ステージHUD ── */
+  #stage-hud {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    display: none; gap: 20px; align-items: center;
+    background: rgba(5,10,30,0.72); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 30px; padding: 6px 22px; z-index: 6; pointer-events: none;
+    font-size: 13px; color: #fff; white-space: nowrap;
+  }
+  #stage-hud .hud-stage { font-weight: bold; color: #ffdd44; font-size: 14px; }
+  #stage-hud .hud-diff  { color: #aaccff; }
+  #stage-hud .hud-timer { font-size: 15px; font-weight: bold; color: #fff; font-family: monospace; }
+  #stage-hud .hud-score { color: #88ffaa; font-weight: bold; }
+
+  /* ── ステージクリア画面 ── */
+  #stage-clear {
+    position: fixed; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    z-index: 20; color: #fff; flex-direction: column;
+    background: url('natchan-kona.png') center / cover no-repeat;
+  }
+  #stage-clear .clear-inner {
+    background: rgba(5,10,30,0.88);
+    border: 2px solid rgba(255,200,80,0.5);
+    border-radius: 20px; padding: 32px 48px;
+    text-align: center; min-width: 320px;
+    box-shadow: 0 0 60px rgba(255,180,0,0.3);
+  }
+  #stage-clear h2 {
+    font-family: 'Kaisei Decol', serif;
+    font-size: 2.2rem; color: #ffdd44;
+    text-shadow: 0 0 20px #ff9900; margin-bottom: 4px;
+  }
+  #stage-clear .clear-stage { font-size: 1rem; color: #aaccff; margin-bottom: 16px; }
+  #stage-clear .stars { font-size: 2rem; margin: 10px 0; letter-spacing: 4px; }
+  #stage-clear .score-row {
+    display: flex; justify-content: space-between; gap: 24px;
+    font-size: 0.9rem; color: #ccc; margin: 4px 0;
+  }
+  #stage-clear .score-row.total {
+    font-size: 1.1rem; font-weight: bold; color: #ffdd44;
+    border-top: 1px solid rgba(255,255,255,0.2); margin-top: 10px; padding-top: 10px;
+  }
+  #stage-clear .grand-total {
+    font-size: 1rem; color: #88ffaa; margin-top: 6px;
+  }
+  #stage-clear button {
+    margin-top: 22px; padding: 14px 40px; font-size: 1.1rem; font-weight: bold;
+    cursor: pointer;
+    background: linear-gradient(135deg, #ff6600, #ffaa00);
+    border: 2px solid #ffdd88; border-radius: 40px;
+    color: #1a0a00; letter-spacing: 3px;
+    animation: pulse-btn 1.6s ease-in-out infinite;
+  }
+
+  /* ── ゲームクリア画面（全ステージ完了） ── */
+  #game-complete {
+    position: fixed; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    z-index: 20; color: #fff; flex-direction: column;
+    background: url('natchan-kona.png') center / cover no-repeat;
+  }
+  #game-complete .complete-inner {
+    background: rgba(5,10,30,0.90);
+    border: 2px solid rgba(255,220,80,0.6);
+    border-radius: 20px; padding: 36px 56px;
+    text-align: center; min-width: 320px;
+    box-shadow: 0 0 80px rgba(255,200,0,0.4);
+  }
+  #game-complete h2 {
+    font-family: 'Kaisei Decol', serif;
+    font-size: 2.4rem; color: #ffee44;
+    text-shadow: 0 0 30px #ffaa00;
+  }
+  #game-complete .complete-total {
+    font-size: 2rem; font-weight: bold; color: #88ffaa;
+    margin: 16px 0; text-shadow: 0 0 12px #00ff88;
+  }
+  #game-complete .complete-msg { color: #ccc; font-size: 0.95rem; margin-bottom: 8px; }
+  #game-complete button {
+    margin-top: 20px; padding: 14px 40px; font-size: 1.1rem; font-weight: bold;
+    cursor: pointer;
+    background: linear-gradient(135deg, #ff6600, #ffaa00);
+    border: 2px solid #ffdd88; border-radius: 40px;
+    color: #1a0a00; letter-spacing: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <!-- 背景イラスト -->
+  <div class="bg-img"></div>
+  <!-- スピードライン -->
+  <div class="speed-lines"></div>
+  <!-- 左右の迷路壁 -->
+  <div class="maze-left">
+    <div class="maze-block"></div>
+    <div class="maze-block open"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block open"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block open"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block"></div>
+  </div>
+  <div class="maze-right">
+    <div class="maze-block open"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block open"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block open"></div>
+    <div class="maze-block"></div>
+    <div class="maze-block"></div>
+  </div>
+  <!-- 上下グラデ -->
+  <div class="top-shade"></div>
+  <div class="bottom-shade"></div>
+  <!-- タイトル -->
+  <div class="title-block">
+    <div class="title-en">🏯 3D MAZE ADVENTURE 🐾</div>
+    <div class="title-jp">なっちゃんと<span>コナ</span>の<br>迷　路</div>
+  </div>
+  <!-- キャラ名 -->
+  <div class="char-label label-natsu">🥷 なっちゃん</div>
+  <div class="char-label label-kona">🐾 コナ</div>
+  <!-- 操作説明 -->
+  <div class="controls">
+    <b>▲▼</b> 前後移動　<b>◀▶</b> 左右回転<br>
+    <b>画面ドラッグ</b> で視点を変えよう！
+  </div>
+  <!-- スタートボタン -->
+  <div class="start-wrap">
+    <button id="start-btn">🏃 スタート！</button>
+  </div>
+</div>
+
+<!-- ステージHUD -->
+<div id="stage-hud">
+  <span class="hud-stage" id="hud-stage">ステージ 1</span>
+  <span class="hud-diff"  id="hud-diff">かんたん</span>
+  <span class="hud-timer" id="hud-timer">0:00</span>
+  <span class="hud-score" id="hud-score">0 pt</span>
+</div>
+
+<!-- ステージクリア画面 -->
+<div id="stage-clear">
+  <div class="clear-inner">
+    <h2>🎉 ステージクリア！</h2>
+    <div class="clear-stage" id="clear-stage-label">ステージ 1 クリア</div>
+    <div class="stars" id="clear-stars">★★★</div>
+    <div class="score-row"><span>基本ポイント</span><span id="sc-base">0</span></div>
+    <div class="score-row"><span>タイムボーナス</span><span id="sc-bonus">×0.0</span></div>
+    <div class="score-row total"><span>今回のポイント</span><span id="sc-stage">0 pt</span></div>
+    <div class="grand-total">累計：<span id="sc-total">0</span> pt</div>
+    <button id="next-btn">次のステージへ！ →</button>
+    <div style="margin-top:14px;">
+      <button id="mute-btn-clear" style="
+        background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.35);
+        border-radius:50%; width:44px; height:44px; font-size:20px;
+        cursor:pointer; color:#fff;">🔊</button>
+    </div>
+  </div>
+</div>
+
+<!-- ゲームクリア画面（全ステージ完了） -->
+<div id="game-complete">
+  <div class="complete-inner">
+    <h2>🏆 全ステージクリア！</h2>
+    <div class="complete-msg">なっちゃんとコナ、すごい！！🐾</div>
+    <div class="complete-total"><span id="gc-total">0</span> pt</div>
+    <div class="complete-msg" id="gc-rank"></div>
+    <button id="restart-btn">🔄 はじめから！</button>
+    <div style="margin-top:14px;">
+      <button id="mute-btn-goal" style="
+        background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.35);
+        border-radius:50%; width:44px; height:44px; font-size:20px;
+        cursor:pointer; color:#fff;">🔊</button>
+    </div>
+  </div>
+</div>
+
+<div id="look-area"></div>
+
+<div id="dpad">
+  <div class="dpad-btn" data-dir="up">▲</div>
+  <div class="dpad-btn" data-dir="left">◀</div>
+  <div class="dpad-btn" data-dir="down">▼</div>
+  <div class="dpad-btn" data-dir="right">▶</div>
+</div>
+
+<canvas id="minimap"></canvas>
+<div id="crosshair">+</div>
+<div id="kona-status">🐾 コナ：探索中…</div>
+<div id="bark-bubble">ワン！ワン！</div>
+<div id="mute-btn" title="ミュート">🔊</div>
+<div id="hud">▲▼：前後 ／ ◀▶：回転 ／ ドラッグ：視点</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ════════════════════════════════════════
+//  🔊 サウンドシステム (Web Audio API)
+// ════════════════════════════════════════
+const Sound = (() => {
+  let ctx = null, master = null, bgmActive = false, bgmTimer = null;
+  let muted = false;
+
+  // ── ノート周波数テーブル ──
+  const hz = (n,o=4) => 440 * Math.pow(2, (n + (o-4)*12 - 9) / 12);
+  const C=0,D=2,E=4,F=5,G=7,A=9,B=11;
+
+  // ── BGMメロディ（忍者アドベンチャー風、BPM=126） ──
+  const BPM = 126, Q = 60/BPM, Eh = Q/2, H = Q*2;
+  const mel = [
+    // フレーズA：元気に走る！
+    [hz(E),Eh],[hz(G),Eh],[hz(A),Eh],[hz(G),Eh],
+    [hz(E),Q ],[hz(C),Eh],[hz(D),Eh],
+    [hz(E),Eh],[hz(G),Eh],[hz(A),Eh],[hz(G),Eh],
+    [hz(E),Q ],[hz(G),Q ],
+    // フレーズB：どきどき探検
+    [hz(A),Eh],[hz(A),Eh],[hz(B),Eh],[hz(A),Eh],
+    [hz(G),Q ],[hz(E),Eh],[hz(G),Eh],
+    [hz(A),Eh],[hz(G),Eh],[hz(E),Eh],[hz(D),Eh],
+    [hz(E),H ],
+    // フレーズC：見つけた！
+    [hz(C,5),Eh],[hz(B),Eh],[hz(A),Eh],[hz(G),Eh],
+    [hz(A),Eh  ],[hz(G),Eh],[hz(E),Q ],
+    [hz(G),Eh  ],[hz(A),Eh],[hz(G),Eh],[hz(E),Eh],
+    [hz(D),Eh  ],[hz(E),Eh],[hz(G),Q ],
+    // フレーズD：ゴールへ！
+    [hz(E),Eh],[hz(G),Eh],[hz(A),Eh],[hz(G),Eh],
+    [hz(A),Eh],[hz(G),Eh],[hz(A),Q ],
+    [hz(G),Eh],[hz(E),Eh],[hz(D),Eh],[hz(C),Eh],
+    [hz(C),H ],
+  ];
+  const bass = [
+    [hz(C,3),Q],[hz(C,3),Q],[hz(G,3),Q],[hz(G,3),Q],
+    [hz(C,3),Q],[hz(C,3),Q],[hz(G,3),Q],[hz(G,3),Q],
+    [hz(A,3),Q],[hz(A,3),Q],[hz(E,3),Q],[hz(E,3),Q],
+    [hz(G,3),Q],[hz(G,3),Q],[hz(C,3),Q],[hz(C,3),Q],
+    [hz(F,3),Q],[hz(F,3),Q],[hz(C,3),Q],[hz(C,3),Q],
+    [hz(G,3),Q],[hz(G,3),Q],[hz(D,3),Q],[hz(D,3),Q],
+    [hz(C,3),Q],[hz(C,3),Q],[hz(G,3),Q],[hz(G,3),Q],
+    [hz(C,3),Q],[hz(C,3),Q],[hz(G,3),Q],[hz(G,3),Q],
+  ];
+
+  function ensure() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain();
+      master.gain.value = 0.55;
+      master.connect(ctx.destination);
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+  }
+
+  // 基本オシレーター
+  function tone(type, freq, vol, t0, t1, dest) {
+    if (!ctx || freq <= 0) return;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+    g.gain.setValueAtTime(vol, t1 - 0.03);
+    g.gain.linearRampToValueAtTime(0, t1);
+    o.connect(g); g.connect(dest || master);
+    o.start(t0); o.stop(t1 + 0.01);
+  }
+
+  // ノイズバッファ
+  function noise(duration, vol, t0, filterType, filterFreq, dest) {
+    if (!ctx) return;
+    const buf = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    const filt = ctx.createBiquadFilter();
+    filt.type = filterType; filt.frequency.value = filterFreq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + duration * 0.9);
+    src.buffer = buf;
+    src.connect(filt); filt.connect(g); g.connect(dest || master);
+    src.start(t0); src.stop(t0 + duration);
+  }
+
+  // BGM1ループのスケジューリング
+  function scheduleBGM(t) {
+    let pt = t, bt = t;
+    for (const [f, dur] of mel) {
+      tone('square',   f,       0.11, pt, pt + dur * 0.82);
+      tone('square',   f * 2,   0.04, pt, pt + dur * 0.7);
+      pt += dur;
+    }
+    for (const [f, dur] of bass) {
+      tone('triangle', f, 0.09, bt, bt + dur * 0.65);
+      bt += dur;
+    }
+    // 簡易パーカッション（4拍子）
+    const barLen = Q * 4;
+    const bars = Math.floor(mel.reduce((s,[,d])=>s+d,0) / barLen);
+    for (let i = 0; i < bars; i++) {
+      const bt2 = t + i * barLen;
+      // キック（1拍・3拍）
+      for (const b of [0, 2]) {
+        noise(0.12, 0.28, bt2 + b*Q, 'lowpass',  180, master);
+        tone('sine', 60, 0.22, bt2+b*Q, bt2+b*Q+0.1);
+      }
+      // スネア（2拍・4拍）
+      for (const b of [1, 3]) {
+        noise(0.10, 0.18, bt2 + b*Q, 'bandpass', 900, master);
+      }
+      // ハイハット（8分音符）
+      for (let h = 0; h < 8; h++) {
+        noise(0.04, 0.06, bt2 + h*Eh, 'highpass', 8000, master);
+      }
+    }
+    return mel.reduce((s, [,d]) => s + d, 0);
+  }
+
+  function bgmLoop(t) {
+    if (!bgmActive) return;
+    const dur = scheduleBGM(t);
+    bgmTimer = setTimeout(() => bgmLoop(t + dur), (dur - 0.3) * 1000);
+  }
+
+  // ── コナの鳴き声 ──
+  function makeWan(t) {
+    // ノイズ成分（ガサガサした犬らしさ）
+    noise(0.22, 0.25, t, 'bandpass', 900, master);
+    // 音程成分（ワン）
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.exponentialRampToValueAtTime(180, t + 0.18);
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.23);
+  }
+
+  // ── ステップ音 ──
+  let lastStep = 0;
+
+  return {
+    init() { ensure(); },
+
+    startBGM() {
+      ensure();
+      if (bgmActive) return;
+      bgmActive = true;
+      bgmLoop(ctx.currentTime + 0.1);
+    },
+
+    stopBGM() {
+      bgmActive = false;
+      clearTimeout(bgmTimer);
+    },
+
+    setMute(m) {
+      muted = m;
+      if (master) master.gain.value = m ? 0 : 0.55;
+    },
+
+    isMuted() { return muted; },
+
+    // ワンワン（通常：2回、excited：3回連打）
+    bark(type = 'normal') {
+      ensure(); if (muted) return;
+      const t = ctx.currentTime;
+      makeWan(t);
+      makeWan(t + 0.32);
+      if (type === 'excited') makeWan(t + 0.60);
+    },
+
+    // 出口発見の喜び吠え
+    foundExitSound() {
+      ensure(); if (muted) return;
+      const t = ctx.currentTime;
+      makeWan(t); makeWan(t + 0.28); makeWan(t + 0.52);
+      // キラキラ上昇音
+      [[hz(G),0],[hz(A),Eh],[hz(B),Eh],[hz(C,5),Eh],[hz(E,5),Q]].forEach(([f,offset]) => {
+        tone('sine', f, 0.14, t + 0.7 + offset, t + 0.7 + offset + Eh * 0.8);
+      });
+    },
+
+    // ゴールファンファーレ
+    goalFanfare() {
+      ensure(); if (muted) return;
+      const t = ctx.currentTime;
+      const fan = [
+        [hz(C),0],[hz(E),Eh],[hz(G),Q],[hz(C,5),Q+Eh],
+        [hz(E,5),Q*2],[hz(G,5),Q*3],
+      ];
+      fan.forEach(([f, offset]) => {
+        const dur = offset === Q*3 ? H : Q;
+        tone('square',   f,     0.2, t+offset, t+offset+dur*0.85);
+        tone('triangle', f*1.5, 0.1, t+offset, t+offset+dur*0.7);
+      });
+      // 最後にシンバル
+      noise(0.5, 0.2, t + Q*3, 'highpass', 6000, master);
+      // ワンワン！
+      setTimeout(() => { this.bark('excited'); }, 800);
+    },
+
+    // 歩行音（移動中に時々）
+    step() {
+      if (!ctx || muted) return;
+      const now = performance.now();
+      if (now - lastStep < 380) return;
+      lastStep = now;
+      const t = ctx.currentTime;
+      noise(0.05, 0.07, t, 'bandpass', 350, master);
+    },
+  };
+})();
+
+// ──────── ステージ設定 ────────
+const STAGES = [
+  { level:1, cols: 9, rows: 9, label:'ステージ 1', diff:'かんたん',      stars:'★☆☆', fog:12, base:800  },
+  { level:2, cols:11, rows:11, label:'ステージ 2', diff:'ちょっとむずい', stars:'★★☆', fog:15, base:1200 },
+  { level:3, cols:13, rows:13, label:'ステージ 3', diff:'ふつう',         stars:'★★☆', fog:17, base:1800 },
+  { level:4, cols:15, rows:15, label:'ステージ 4', diff:'むずかしい',     stars:'★★★', fog:19, base:2600 },
+  { level:5, cols:17, rows:17, label:'ステージ 5', diff:'すごくむずい',   stars:'★★★', fog:21, base:3600 },
+  { level:6, cols:19, rows:19, label:'ステージ 6', diff:'超むずかしい！', stars:'★★★', fog:24, base:5000 },
+];
+let currentStageIdx = 0;
+let totalScore = 0;
+let stageElapsed = 0; // ステージ内経過時間
+
+// 現ステージの設定を参照する動的変数
+let COLS = 9, ROWS = 9;
+let GOAL_C = 7, GOAL_R = 7;
+
+// ──────── 迷路生成 ────────
+
+function generateMaze(cols, rows) {
+  const grid = Array.from({length: rows}, () => new Array(cols).fill(1));
+  function carve(cx, cy) {
+    [[0,-2],[0,2],[-2,0],[2,0]].sort(()=>Math.random()-.5).forEach(([dx,dy])=>{
+      const nx=cx+dx, ny=cy+dy;
+      if(nx>0&&nx<cols-1&&ny>0&&ny<rows-1&&grid[ny][nx]===1){
+        grid[cy+dy/2][cx+dx/2]=0; grid[ny][nx]=0; carve(nx,ny);
+      }
+    });
+  }
+  grid[1][1]=0; carve(1,1); grid[rows-2][cols-2]=0;
+  return grid;
+}
+
+// ──────── Three.js ────────
+const canvas3d = document.createElement('canvas');
+canvas3d.style.cssText = 'position:fixed;inset:0;display:block;';
+document.body.insertBefore(canvas3d, document.body.firstChild);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, canvas: canvas3d });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x2a3550, 3, 24);
+scene.background = new THREE.Color(0x2a3550);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.05, 100);
+
+// ──────── ライト ────────
+scene.add(new THREE.AmbientLight(0x8899cc, 1.6));
+const playerLight = new THREE.PointLight(0xfff5e0, 2.2, 11);
+scene.add(playerLight);
+const goalLight = new THREE.PointLight(0xffdd44, 3.5, 8);
+scene.add(goalLight);
+
+// ──────── マテリアル ────────
+const wallMat  = new THREE.MeshLambertMaterial({ color: 0x6a9fd8 });
+const floorMat = new THREE.MeshLambertMaterial({ color: 0x5a5878 });
+const ceilMat  = new THREE.MeshLambertMaterial({ color: 0x3d3d5c });
+const goalMat  = new THREE.MeshStandardMaterial({
+  color: 0xffdd44, emissive: 0xffaa00, emissiveIntensity: 1.2, roughness: 0.2
+});
+
+const CELL = 3, WALL_H = 2.6;
+let maze = [], mazeGroup, goalWorldPos = new THREE.Vector3();
+
+function buildMaze() {
+  if (mazeGroup) scene.remove(mazeGroup);
+  mazeGroup = new THREE.Group();
+  maze = generateMaze(COLS, ROWS);
+
+  const floorGeo = new THREE.PlaneGeometry(COLS*CELL, ROWS*CELL);
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI/2;
+  floor.position.set((COLS-1)*CELL/2, 0, (ROWS-1)*CELL/2);
+  mazeGroup.add(floor);
+  const ceil = new THREE.Mesh(floorGeo, ceilMat);
+  ceil.rotation.x = Math.PI/2;
+  ceil.position.set((COLS-1)*CELL/2, WALL_H, (ROWS-1)*CELL/2);
+  mazeGroup.add(ceil);
+
+  const wallGeo = new THREE.BoxGeometry(CELL, WALL_H, CELL);
+  const wallCount = maze.flat().filter(v=>v===1).length;
+  const iMesh = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
+  const dummy = new THREE.Object3D();
+  let idx = 0;
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++)
+    if (maze[r][c]===1) {
+      dummy.position.set(c*CELL, WALL_H/2, r*CELL);
+      dummy.updateMatrix(); iMesh.setMatrixAt(idx++, dummy.matrix);
+    }
+  iMesh.instanceMatrix.needsUpdate = true;
+  mazeGroup.add(iMesh);
+
+  const gx=(COLS-2)*CELL, gz=(ROWS-2)*CELL;
+  goalWorldPos.set(gx, WALL_H/2, gz);
+  goalLight.position.set(gx, WALL_H*0.8, gz);
+  const goalMesh = new THREE.Mesh(new THREE.TorusKnotGeometry(0.35,0.12,64,16), goalMat);
+  goalMesh.position.copy(goalWorldPos);
+  goalMesh.name = 'goal';
+  mazeGroup.add(goalMesh);
+  scene.add(mazeGroup);
+}
+
+// ──────── ミニマップ ────────
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
+let MM = 5;
+
+function resizeMinimap() {
+  MM = Math.max(5, Math.floor(95 / Math.max(COLS, ROWS)));
+  mmCanvas.width  = COLS * MM;
+  mmCanvas.height = ROWS * MM;
+}
+
+function drawMinimap() {
+  for (let r=0;r<ROWS;r++) for (let c=0;c<COLS;c++) {
+    mmCtx.fillStyle = maze[r][c] ? '#5580bb' : '#1a1a30';
+    mmCtx.fillRect(c*MM, r*MM, MM, MM);
+  }
+  mmCtx.fillStyle = '#ffdd44';
+  mmCtx.fillRect(GOAL_C*MM, GOAL_R*MM, MM, MM);
+
+  // コナの位置
+  if (konaMesh) {
+    const kc = konaMesh.position.x/CELL, kr = konaMesh.position.z/CELL;
+    mmCtx.fillStyle = '#ff99aa';
+    mmCtx.beginPath();
+    mmCtx.arc(kc*MM+MM/2, kr*MM+MM/2, MM*0.65, 0, Math.PI*2);
+    mmCtx.fill();
+  }
+
+  // プレーヤー
+  const px=camera.position.x/CELL, pz=camera.position.z/CELL;
+  mmCtx.fillStyle = '#ff5555';
+  mmCtx.beginPath();
+  mmCtx.arc(px*MM+MM/2, pz*MM+MM/2, MM*0.75, 0, Math.PI*2);
+  mmCtx.fill();
+  mmCtx.strokeStyle = '#ffaa00'; mmCtx.lineWidth = 1.5;
+  mmCtx.beginPath();
+  mmCtx.moveTo(px*MM+MM/2, pz*MM+MM/2);
+  mmCtx.lineTo(px*MM+MM/2 - Math.sin(yaw)*MM*1.5, pz*MM+MM/2 - Math.cos(yaw)*MM*1.5);
+  mmCtx.stroke();
+}
+
+// ──────── 視点・操作 ────────
+let yaw=0, pitch=0;
+function applyCamera() {
+  camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=pitch;
+}
+
+const keys = {};
+document.addEventListener('keydown', e=>{ keys[e.code]=true; e.preventDefault(); });
+document.addEventListener('keyup',   e=>{ keys[e.code]=false; });
+
+const dpadState = { up:false, down:false, left:false, right:false };
+document.querySelectorAll('.dpad-btn').forEach(btn => {
+  const dir = btn.dataset.dir;
+  const press   = e => { e.preventDefault(); dpadState[dir]=true;  btn.classList.add('pressed'); };
+  const release = ()  => { dpadState[dir]=false; btn.classList.remove('pressed'); };
+  btn.addEventListener('mousedown',   press);
+  btn.addEventListener('touchstart',  press,   {passive:false});
+  btn.addEventListener('mouseup',     release);
+  btn.addEventListener('mouseleave',  release);
+  btn.addEventListener('touchend',    release);
+  btn.addEventListener('touchcancel', release);
+});
+
+let dragging=false, dragX=0, dragY=0;
+const lookArea = document.getElementById('look-area');
+lookArea.addEventListener('mousedown', e=>{ dragging=true; dragX=e.clientX; dragY=e.clientY; });
+window.addEventListener('mousemove', e=>{
+  if(!dragging||!running) return;
+  yaw  -= (e.clientX-dragX)*0.004; pitch -= (e.clientY-dragY)*0.004;
+  pitch = Math.max(-1.1, Math.min(1.1, pitch));
+  dragX=e.clientX; dragY=e.clientY; applyCamera();
+});
+window.addEventListener('mouseup', ()=>{ dragging=false; });
+lookArea.addEventListener('touchstart', e=>{
+  e.preventDefault(); dragging=true;
+  dragX=e.touches[0].clientX; dragY=e.touches[0].clientY;
+},{passive:false});
+window.addEventListener('touchmove', e=>{
+  if(!dragging||!running) return;
+  yaw  -= (e.touches[0].clientX-dragX)*0.004;
+  pitch -= (e.touches[0].clientY-dragY)*0.004;
+  pitch = Math.max(-1.1, Math.min(1.1, pitch));
+  dragX=e.touches[0].clientX; dragY=e.touches[0].clientY; applyCamera();
+},{passive:true});
+window.addEventListener('touchend', ()=>{ dragging=false; });
+
+// ──────── 衝突判定 ────────
+const SPEED=5, RAD=0.4;
+function wallCollide(pos) {
+  for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
+    const r=Math.round(pos.z/CELL)+dr, c=Math.round(pos.x/CELL)+dc;
+    if(r<0||r>=ROWS||c<0||c>=COLS||maze[r][c]!==1) continue;
+    const half=CELL/2+RAD;
+    if(Math.abs(pos.x-c*CELL)<half && Math.abs(pos.z-r*CELL)<half) return true;
+  }
+  return false;
+}
+function movePlayer(delta) {
+  const speed=SPEED*delta;
+  const fwd=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const mv=new THREE.Vector3();
+  const TURN=1.8;
+  if(keys['KeyA']||keys['ArrowLeft']||dpadState.left)  { yaw+=TURN*delta; applyCamera(); }
+  if(keys['KeyD']||keys['ArrowRight']||dpadState.right) { yaw-=TURN*delta; applyCamera(); }
+  if(keys['KeyW']||keys['ArrowUp']||dpadState.up)   mv.addScaledVector(fwd,  speed);
+  if(keys['KeyS']||keys['ArrowDown']||dpadState.down) mv.addScaledVector(fwd, -speed);
+  if(mv.lengthSq()===0) return;
+  const tx=camera.position.clone(); tx.x+=mv.x;
+  if(!wallCollide(tx)) camera.position.x=tx.x;
+  const tz=camera.position.clone(); tz.z+=mv.z;
+  if(!wallCollide(tz)) camera.position.z=tz.z;
+  camera.position.y=0.5;
+}
+
+// ════════════════════════════════════════
+//  コナ（子犬）
+// ════════════════════════════════════════
+
+// ── 3Dモデル ──
+function createKonaMesh() {
+  const g = new THREE.Group();
+  const fur  = new THREE.MeshLambertMaterial({ color: 0xC68642 });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+  const blk  = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const wht  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
+  // helper: add a mesh to group
+  const add = (geo, mat, px, py, pz, sx=1, sy=1, sz=1) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(px, py, pz); m.scale.set(sx, sy, sz); g.add(m); return m;
+  };
+  const S = r => new THREE.SphereGeometry(r, 8, 8);
+  const Cy = (r,h) => new THREE.CylinderGeometry(r, r, h, 7);
+
+  // 体（ふわふわ感のため楕円形）
+  add(S(0.14), fur, 0, 0.16, 0,   1.5, 1.0, 2.1);
+  // 胸のポンポン
+  add(S(0.10), fur, 0, 0.13, -0.18);
+  // 頭（大きめ = かわいい比率）
+  add(S(0.15), fur, 0, 0.34, -0.18);
+  // 頭のトップのポンポン
+  add(S(0.09), fur, 0, 0.46, -0.16);
+  // 鼻先
+  add(S(0.067), dark, 0, 0.27, -0.30, 1.0, 0.75, 1.0);
+  // 鼻
+  add(S(0.027), blk, 0, 0.292, -0.355);
+  // 目
+  add(S(0.023), blk, -0.068, 0.355, -0.272);
+  add(S(0.023), blk,  0.068, 0.355, -0.272);
+  // 目のハイライト
+  add(S(0.009), wht, -0.060, 0.366, -0.288);
+  add(S(0.009), wht,  0.076, 0.366, -0.288);
+  // 耳（垂れ耳）
+  add(S(0.092), fur, -0.182, 0.292, -0.158, 0.55, 1.55, 0.80);
+  add(S(0.092), fur,  0.182, 0.292, -0.158, 0.55, 1.55, 0.80);
+  // 脚 + 肉球
+  [[-0.09, -0.14], [0.09, -0.14], [-0.09, 0.11], [0.09, 0.11]].forEach(([lx, lz]) => {
+    add(Cy(0.029, 0.16), fur, lx, 0.08, lz);
+    add(S(0.038), dark, lx, 0.003, lz + Math.sign(lz)*0.012);
+  });
+
+  // しっぽグループ（wagging用）
+  const tailG = new THREE.Group();
+  tailG.position.set(0, 0.21, 0.20);
+  const tStem = new THREE.Mesh(Cy(0.019, 0.11), fur);
+  tStem.rotation.x = -0.85; tStem.position.set(0, 0.057, 0.026); tailG.add(tStem);
+  const tPom  = new THREE.Mesh(S(0.067), fur);
+  tPom.position.set(0, 0.118, 0.068); tailG.add(tPom);
+  g.add(tailG);
+  g.userData.tailG = tailG;
+
+  // ── 「！」マーカー ──
+  const excG = new THREE.Group();
+  excG.position.set(0, 0.75, 0);
+  excG.visible = false;
+  const excMat = new THREE.MeshLambertMaterial({ color:0xffee00, emissive:0xffcc00, emissiveIntensity:0.9 });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.155, 0.045), excMat);
+  bar.position.y = 0.06; excG.add(bar);
+  const dot = new THREE.Mesh(S(0.034), excMat);
+  dot.position.y = -0.03; excG.add(dot);
+  g.add(excG);
+  g.userData.excG = excG;
+
+  // ── 「♡」マーカー（往復中） ──
+  const heartG = new THREE.Group();
+  heartG.position.set(0, 0.72, 0);
+  heartG.visible = false;
+  const hMat = new THREE.MeshLambertMaterial({ color:0xff6699, emissive:0xff3366, emissiveIntensity:0.8 });
+  // ハートを球2個+三角で近似
+  const h1 = new THREE.Mesh(S(0.055), hMat); h1.position.set(-0.04, 0.04, 0); heartG.add(h1);
+  const h2 = new THREE.Mesh(S(0.055), hMat); h2.position.set( 0.04, 0.04, 0); heartG.add(h2);
+  const h3 = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.09, 4), hMat);
+  h3.rotation.z = Math.PI; h3.position.set(0, -0.01, 0); heartG.add(h3);
+  g.add(heartG);
+  g.userData.heartG = heartG;
+
+  return g;
+}
+
+// ── BFS 経路探索 ──
+function bfs(sc, sr, gc, gr) {
+  if (sc===gc && sr===gr) return [];
+  const queue = [[sc, sr, []]];
+  const visited = new Set([`${sc},${sr}`]);
+  while (queue.length) {
+    const [c, r, path] = queue.shift();
+    for (const [dc,dr] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+      const nc=c+dc, nr=r+dr, key=`${nc},${nr}`;
+      if (nc>=0&&nc<COLS&&nr>=0&&nr<ROWS&&maze[nr][nc]===0&&!visited.has(key)) {
+        visited.add(key);
+        const np = [...path,[nc,nr]];
+        if (nc===gc && nr===gr) return np;
+        queue.push([nc, nr, np]);
+      }
+    }
+  }
+  return null;
+}
+
+// ── コナの状態管理 ──
+let konaMesh = null;
+// states: EXPLORING / GOING_TO_PLAYER / GOING_TO_EXIT
+let konaState = 'EXPLORING';
+let konaC = 1, konaR = 1;          // 現在のグリッド座標
+let konaPath = [], konaPathIdx = 0; // 移動経路
+let konaFoundExit = false;
+// DFS探索用
+let dfsVisited = new Set();
+let dfsStack   = [];
+const konaStatusEl = document.getElementById('kona-status');
+
+const KONA_EXPLORE_SPD = 4.8;
+const KONA_GUIDE_SPD   = 3.2;
+
+function setKonaStatus(txt) { konaStatusEl.textContent = '🐾 コナ：' + txt; }
+
+function initKona() {
+  if (konaMesh) scene.remove(konaMesh);
+  konaMesh = createKonaMesh();
+  konaMesh.position.set(CELL, 0, CELL);
+  scene.add(konaMesh);
+
+  // 最初はその場で待機（1秒後に吠えて走り出す）
+  konaState = 'WAITING';
+  konaC = 1; konaR = 1;
+  konaPath = []; konaPathIdx = 0;
+  konaFoundExit = false;
+  dfsVisited = new Set(['1,1']);
+  dfsStack   = [[1, 1]];
+  setKonaStatus('よーい…');
+
+  setTimeout(() => {
+    // ワンワン！と吠える
+    Sound.bark('normal');
+    showBarkBubble('ワン！ワン！');
+    setKonaStatus('探索中…');
+    // 少し間をおいてから走り出す
+    setTimeout(() => {
+      konaState = 'EXPLORING';
+    }, 600);
+  }, 1000);
+}
+
+// DFSで次の1ステップを決定
+function dfsNextStep() {
+  if (dfsStack.length === 0) {
+    dfsStack = [[konaC, konaR]];
+    dfsVisited = new Set([`${konaC},${konaR}`]);
+    return;
+  }
+  const [c, r] = dfsStack[dfsStack.length - 1];
+  const dirs = [[0,-1],[0,1],[-1,0],[1,0]].sort(()=>Math.random()-.5);
+  let moved = false;
+  for (const [dc, dr] of dirs) {
+    const nc=c+dc, nr=r+dr, key=`${nc},${nr}`;
+    if (nc>=0&&nc<COLS&&nr>=0&&nr<ROWS&&maze[nr][nc]===0&&!dfsVisited.has(key)) {
+      dfsVisited.add(key);
+      dfsStack.push([nc, nr]);
+      konaPath = [[nc, nr]]; konaPathIdx = 0;
+      moved = true; break;
+    }
+  }
+  if (!moved) {
+    dfsStack.pop();
+    if (dfsStack.length > 0) {
+      const [bc, br] = dfsStack[dfsStack.length - 1];
+      konaPath = [[bc, br]]; konaPathIdx = 0;
+    }
+  }
+}
+
+// コナの更新（毎フレーム）
+function updateKona(delta, elapsed) {
+  if (!konaMesh || !running) return;
+  if (konaState === 'WAITING') {
+    // 待機中：しっぽだけ振る
+    if (konaMesh.userData.tailG)
+      konaMesh.userData.tailG.rotation.z = Math.sin(elapsed * 10) * 0.5;
+    return;
+  }
+
+  const speed = konaFoundExit ? KONA_GUIDE_SPD : KONA_EXPLORE_SPD;
+  const hasWaypoint = konaPath.length > 0 && konaPathIdx < konaPath.length;
+
+  if (hasWaypoint) {
+    const [tc, tr] = konaPath[konaPathIdx];
+    const tx = tc*CELL, tz = tr*CELL;
+    const dx = tx - konaMesh.position.x;
+    const dz = tz - konaMesh.position.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+
+    if (dist < 0.08) {
+      // ウェイポイント到達
+      konaMesh.position.x = tx; konaMesh.position.z = tz;
+      konaC = tc; konaR = tr;
+      konaPathIdx++;
+
+      // 状態遷移チェック
+      if (konaState === 'EXPLORING') {
+        if (konaC === GOAL_C && konaR === GOAL_R) {
+          // 出口発見！
+          konaFoundExit = true;
+          konaState = 'GOING_TO_PLAYER';
+          konaPath = []; konaPathIdx = 0;
+          setKonaStatus('出口みつけた！むかえにいくよ！');
+          Sound.foundExitSound();
+          showBarkBubble('ワンワンワン！');
+          if (konaMesh.userData.excG) {
+            konaMesh.userData.excG.visible = true;
+            setTimeout(() => {
+              if (konaMesh?.userData.excG) konaMesh.userData.excG.visible = false;
+              if (konaMesh?.userData.heartG) konaMesh.userData.heartG.visible = true;
+            }, 2800);
+          }
+        }
+      } else if (konaState === 'GOING_TO_PLAYER') {
+        const pc = Math.round(camera.position.x/CELL);
+        const pr = Math.round(camera.position.z/CELL);
+        const d  = Math.abs(konaC-pc) + Math.abs(konaR-pr);
+        if (d <= 2) {
+          konaState = 'GOING_TO_EXIT';
+          konaPath = []; konaPathIdx = 0;
+          setKonaStatus('こっちだよ！ついてきて！');
+        }
+      } else if (konaState === 'GOING_TO_EXIT') {
+        if (konaC === GOAL_C && konaR === GOAL_R) {
+          konaState = 'GOING_TO_PLAYER';
+          konaPath = []; konaPathIdx = 0;
+          setKonaStatus('はやくきて！');
+        }
+      }
+    } else {
+      // ウェイポイントへ移動
+      const s = Math.min(speed * delta, dist);
+      konaMesh.position.x += (dx/dist) * s;
+      konaMesh.position.z += (dz/dist) * s;
+      konaMesh.rotation.y  = Math.atan2(dx, dz);
+    }
+  } else {
+    // 次の経路を決定
+    if (konaState === 'EXPLORING') {
+      dfsNextStep();
+    } else if (konaState === 'GOING_TO_PLAYER') {
+      const pc = Math.round(camera.position.x/CELL);
+      const pr = Math.round(camera.position.z/CELL);
+      if (Math.abs(konaC-pc)+Math.abs(konaR-pr) <= 2) {
+        konaState = 'GOING_TO_EXIT';
+      } else {
+        const path = bfs(konaC, konaR, pc, pr);
+        if (path && path.length > 0) { konaPath=path; konaPathIdx=0; }
+        else { konaState='GOING_TO_EXIT'; }
+      }
+    } else if (konaState === 'GOING_TO_EXIT') {
+      const path = bfs(konaC, konaR, GOAL_C, GOAL_R);
+      if (path && path.length > 0) { konaPath=path; konaPathIdx=0; }
+      else { konaState='GOING_TO_PLAYER'; }
+    }
+  }
+
+  // ── アニメーション ──
+  const isWalking = hasWaypoint;
+  // 上下ボブ（走るモーション）
+  konaMesh.position.y = isWalking ? Math.abs(Math.sin(elapsed * 10)) * 0.07 : 0;
+
+  // しっぽを振る
+  const tailG = konaMesh.userData.tailG;
+  if (tailG) tailG.rotation.z = Math.sin(elapsed * (konaFoundExit ? 15 : 10)) * 0.65;
+
+  // 「！」や「♡」を常にカメラ方向に向ける
+  ['excG', 'heartG'].forEach(key => {
+    const m = konaMesh.userData[key];
+    if (m && m.visible) {
+      const dx2 = camera.position.x - konaMesh.position.x;
+      const dz2 = camera.position.z - konaMesh.position.z;
+      m.rotation.y = Math.atan2(dx2, dz2) - konaMesh.rotation.y;
+      m.position.y = 0.72 + Math.sin(elapsed * 5) * 0.04;
+    }
+  });
+}
+
+// ──────── スコア計算 ────────
+function calcScore(elapsed, base) {
+  const mult = Math.max(0.5, Math.min(3.0, 180 / Math.max(15, elapsed)));
+  return Math.round(base * mult);
+}
+function getStarRating(mult) {
+  if (mult >= 2.5) return '★★★';
+  if (mult >= 1.5) return '★★☆';
+  return '★☆☆';
+}
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ──────── ステージクリア ────────
+function showStageClear() {
+  running = false;
+  Sound.stopBGM();
+  Sound.goalFanfare();
+
+  const stage  = STAGES[currentStageIdx];
+  const mult   = Math.max(0.5, Math.min(3.0, 180 / Math.max(15, stageElapsed)));
+  const staged = calcScore(stageElapsed, stage.base);
+  totalScore  += staged;
+
+  document.getElementById('clear-stage-label').textContent = `${stage.label} クリア！  タイム：${fmtTime(stageElapsed)}`;
+  document.getElementById('clear-stars').textContent = getStarRating(mult);
+  document.getElementById('sc-base').textContent  = stage.base.toLocaleString();
+  document.getElementById('sc-bonus').textContent = `×${mult.toFixed(1)} → +${(staged - stage.base).toLocaleString()}`;
+  document.getElementById('sc-stage').textContent = `${staged.toLocaleString()} pt`;
+  document.getElementById('sc-total').textContent = totalScore.toLocaleString();
+
+  document.getElementById('stage-clear').style.display = 'flex';
+}
+
+function checkGoal() {
+  if (camera.position.distanceTo(goalWorldPos) < 1.5) showStageClear();
+}
+
+// ──────── ランダムバーク ────────
+const barkEl = document.getElementById('bark-bubble');
+const barkPhrases = ['ワン！ワン！','ワウ！','クゥーン…','ワンワンワン！','ウォウ！'];
+let nextBarkTime = 0;
+
+function showBarkBubble(text) {
+  barkEl.textContent = text;
+  barkEl.style.opacity = '1';
+  setTimeout(() => { barkEl.style.opacity = '0'; }, 1800);
+}
+
+function updateRandomBark(elapsed) {
+  if (elapsed < nextBarkTime) return;
+  nextBarkTime = elapsed + 16 + Math.random() * 18; // 16〜34秒おき
+  Sound.bark('normal');
+  showBarkBubble(barkPhrases[Math.floor(Math.random() * barkPhrases.length)]);
+}
+
+// ──────── メインループ ────────
+const clock = new THREE.Clock();
+let running = false;
+
+function isPlayerMoving() {
+  return keys['KeyW']||keys['ArrowUp']||keys['KeyS']||keys['ArrowDown']||
+         dpadState.up||dpadState.down||dpadState.left||dpadState.right;
+}
+
+function animate() {
+  if (!running) return;
+  requestAnimationFrame(animate);
+  const delta   = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+  stageElapsed  = elapsed;
+  movePlayer(delta);
+  updateKona(delta, elapsed);
+  checkGoal();
+  if (isPlayerMoving()) Sound.step();
+  updateRandomBark(elapsed);
+  const g = mazeGroup?.getObjectByName('goal');
+  if (g) { g.rotation.x=elapsed*0.7; g.rotation.y=elapsed*1.1; }
+  playerLight.position.set(camera.position.x, camera.position.y+0.8, camera.position.z);
+  // ステージHUDタイマー更新
+  document.getElementById('hud-timer').textContent = fmtTime(elapsed);
+  drawMinimap();
+  renderer.render(scene, camera);
+}
+
+// ──────── ステージ開始 ────────
+function startStage(idx) {
+  currentStageIdx = idx;
+  const stage = STAGES[idx];
+  COLS   = stage.cols; ROWS = stage.rows;
+  GOAL_C = COLS - 2;  GOAL_R = ROWS - 2;
+
+  // フォグをステージに合わせて調整
+  scene.fog.far = stage.fog;
+
+  // ミニマップリサイズ
+  resizeMinimap();
+
+  // ステージHUD更新
+  document.getElementById('stage-hud').style.display = 'flex';
+  document.getElementById('hud-stage').textContent   = stage.label;
+  document.getElementById('hud-diff').textContent    = stage.diff;
+  document.getElementById('hud-score').textContent   = `${totalScore.toLocaleString()} pt`;
+  document.getElementById('hud-timer').textContent   = '0:00';
+
+  buildMaze();
+  camera.position.set(CELL, 0.5, CELL);
+  yaw=0; pitch=0; applyCamera();
+  initKona();
+  nextBarkTime = 18 + Math.random() * 12;
+  stageElapsed = 0;
+  running = true;
+  clock.start();
+  Sound.startBGM();
+  requestAnimationFrame(animate);
+}
+
+// ──────── ゲーム開始（ステージ1から） ────────
+function startGame() {
+  totalScore = 0;
+  Sound.init();
+  startStage(0);
+}
+
+// ──────── 次のステージ / 全クリア ────────
+function goNextStage() {
+  document.getElementById('stage-clear').style.display = 'none';
+  const next = currentStageIdx + 1;
+  if (next >= STAGES.length) {
+    // 全ステージクリア
+    document.getElementById('hud-score').textContent = `${totalScore.toLocaleString()} pt`;
+    document.getElementById('gc-total').textContent  = totalScore.toLocaleString();
+    // ランク判定
+    const rank = totalScore >= 40000 ? '🏅 忍者マスター！'
+               : totalScore >= 25000 ? '🥷 くノ一！'
+               : totalScore >= 15000 ? '⭐ 冒険家！'
+               : '🐾 よくがんばった！';
+    document.getElementById('gc-rank').textContent = rank;
+    document.getElementById('game-complete').style.display = 'flex';
+    document.getElementById('stage-hud').style.display = 'none';
+  } else {
+    startStage(next);
+  }
+}
+
+// ボタンイベント
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('overlay').style.display = 'none';
+  startGame();
+});
+document.getElementById('next-btn').addEventListener('click', goNextStage);
+document.getElementById('restart-btn').addEventListener('click', () => {
+  document.getElementById('game-complete').style.display = 'none';
+  startGame();
+});
+
+// ミュートボタン（全画面共通）
+function toggleMute() {
+  const m = !Sound.isMuted();
+  Sound.setMute(m);
+  const icon = m ? '🔇' : '🔊';
+  ['mute-btn','mute-btn-clear','mute-btn-goal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = icon;
+  });
+}
+['mute-btn','mute-btn-clear','mute-btn-goal'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', toggleMute);
+});
+window.addEventListener('resize', () => {
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
