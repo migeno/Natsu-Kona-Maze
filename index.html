@@ -1226,6 +1226,24 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+// ──────── スタート方向（通路がある向き） ────────
+function getStartYaw() {
+  // スタート位置 (col=1, row=1) の隣接セルを確認し、通路がある方向を返す
+  const dirs = [
+    { dc:  0, dr: -1, yaw: 0            },  // 北（上）
+    { dc:  1, dr:  0, yaw: -Math.PI/2   },  // 東（右）
+    { dc:  0, dr:  1, yaw: Math.PI      },  // 南（下）
+    { dc: -1, dr:  0, yaw:  Math.PI/2   },  // 西（左）
+  ];
+  for (const d of dirs) {
+    const nc = 1 + d.dc, nr = 1 + d.dr;
+    if (nc >= 0 && nc < COLS && nr >= 0 && nr < ROWS && maze[nr][nc] === 0) {
+      return d.yaw;
+    }
+  }
+  return 0;
+}
+
 // ──────── ステージ開始 ────────
 function startStage(idx) {
   currentStageIdx = idx;
@@ -1248,7 +1266,7 @@ function startStage(idx) {
 
   buildMaze();
   camera.position.set(CELL, 0.5, CELL);
-  yaw=0; pitch=0; applyCamera();
+  yaw = getStartYaw(); pitch=0; applyCamera();
   initKona();
   nextBarkTime = 18 + Math.random() * 12;
   stageElapsed = 0;
